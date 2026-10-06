@@ -18,6 +18,7 @@ CONFIG_DIR="$USER_HOME/printer_data/config"
 CAMERA_TEMPLATE="$PROJECT_DIR/camera.cfg"
 LIGHTBAR_TEMPLATE="$PROJECT_DIR/camera-lightbar.cfg"
 EXPOSURE_SCRIPT="$PROJECT_DIR/set_camera_exposure.sh"
+PRINTER_CONFIG_HELPER="$PROJECT_DIR/printer_config.sh"
 CAMERA_CONFIG="$CONFIG_DIR/camera.cfg"
 LIGHTBAR_CONFIG="$CONFIG_DIR/camera-lightbar.cfg"
 PRINTER_CONFIG="$CONFIG_DIR/printer.cfg"
@@ -50,7 +51,11 @@ if [ ! -d "$CONFIG_DIR" ]; then
     exit 1
 fi
 
-for REQUIRED_FILE in "$CAMERA_TEMPLATE" "$LIGHTBAR_TEMPLATE" "$EXPOSURE_SCRIPT"; do
+for REQUIRED_FILE in \
+    "$CAMERA_TEMPLATE" \
+    "$LIGHTBAR_TEMPLATE" \
+    "$EXPOSURE_SCRIPT" \
+    "$PRINTER_CONFIG_HELPER"; do
     if [ ! -f "$REQUIRED_FILE" ]; then
         echo "ERROR: Required repository file was not found:"
         echo "$REQUIRED_FILE"
@@ -77,6 +82,11 @@ if [ ! -x /usr/bin/v4l2-ctl ]; then
     echo
     echo "  sudo apt install v4l-utils"
     echo
+    exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERROR: python3 was not found."
     exit 1
 fi
 
@@ -143,16 +153,14 @@ echo "$CAMERA_CONFIG"
 echo "Optional camera-lightbar.cfg installed:"
 echo "$LIGHTBAR_CONFIG"
 
-# Remove all managed include duplicates, then append exactly one camera include.
+# Keep exactly one camera include in the editable section of printer.cfg.
+# The helper also migrates exact legacy camera includes left below SAVE_CONFIG.
+. "$PRINTER_CONFIG_HELPER"
 TEMP_CONFIG="$(mktemp "$CONFIG_DIR/.printer.cfg.XXXXXX")"
-awk '
-    $0 ~ /^[[:space:]]*\[include[[:space:]]+camera\.cfg\][[:space:]]*$/ { next }
-    { print }
-    END { print "[include camera.cfg]" }
-' "$PRINTER_CONFIG" > "$TEMP_CONFIG"
+kcc_transform_printer_config install "$PRINTER_CONFIG" "$TEMP_CONFIG"
 chmod --reference="$PRINTER_CONFIG" "$TEMP_CONFIG"
 mv -- "$TEMP_CONFIG" "$PRINTER_CONFIG"
-echo "Ensured exactly one [include camera.cfg] in printer.cfg."
+echo "Ensured exactly one [include camera.cfg] before SAVE_CONFIG."
 
 # Configure Moonraker Update Manager in a project-owned include file.
 cat > "$UPDATE_CONFIG" <<EOF_UPDATE
@@ -192,7 +200,9 @@ echo "  $CAMERA_CONFIG"
 echo
 echo "Optional lightbar integration:"
 echo "  If your Klipper configuration defines [output_pin lightbar],"
-echo "  add [include camera-lightbar.cfg] to printer.cfg."
+echo "  add [include camera-lightbar.cfg] to the editable section of"
+echo "  printer.cfg, before SAVE_CONFIG and preferably next to"
+echo "  [include camera.cfg]."
 echo
 echo "Restart Klipper and Moonraker to apply the changes."
 echo

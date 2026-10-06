@@ -10,6 +10,7 @@ echo
 
 CAMERA_USER="${SUDO_USER:-$(id -un)}"
 USER_HOME="$(getent passwd "$CAMERA_USER" | cut -d: -f6)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$USER_HOME/printer_data/config"
 
 PRINTER_CONFIG="$CONFIG_DIR/printer.cfg"
@@ -17,8 +18,9 @@ CAMERA_CONFIG="$CONFIG_DIR/camera.cfg"
 LIGHTBAR_CONFIG="$CONFIG_DIR/camera-lightbar.cfg"
 MOONRAKER_CONFIG="$CONFIG_DIR/moonraker.conf"
 UPDATE_CONFIG="$CONFIG_DIR/update_camera_control.cfg"
+PRINTER_CONFIG_HELPER="$PROJECT_DIR/printer_config.sh"
 
-remove_include() {
+remove_moonraker_include() {
     local config_file="$1"
     local include_pattern="$2"
     local temp_config
@@ -34,11 +36,24 @@ remove_include() {
     mv -- "$temp_config" "$config_file"
 }
 
-remove_include "$PRINTER_CONFIG" \
-    '^[[:space:]]*\[include[[:space:]]+camera\.cfg\][[:space:]]*$'
-remove_include "$PRINTER_CONFIG" \
-    '^[[:space:]]*\[include[[:space:]]+camera-lightbar\.cfg\][[:space:]]*$'
-echo "KlipperCameraControl includes removed from printer.cfg (if present)."
+if [ -f "$PRINTER_CONFIG" ]; then
+    if [ ! -f "$PRINTER_CONFIG_HELPER" ]; then
+        echo "ERROR: printer_config.sh was not found:"
+        echo "$PRINTER_CONFIG_HELPER"
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 was not found."
+        exit 1
+    fi
+
+    . "$PRINTER_CONFIG_HELPER"
+    TEMP_CONFIG="$(mktemp "$CONFIG_DIR/.printer.cfg.XXXXXX")"
+    kcc_transform_printer_config uninstall "$PRINTER_CONFIG" "$TEMP_CONFIG"
+    chmod --reference="$PRINTER_CONFIG" "$TEMP_CONFIG"
+    mv -- "$TEMP_CONFIG" "$PRINTER_CONFIG"
+    echo "KlipperCameraControl includes removed before SAVE_CONFIG (if present)."
+fi
 
 if [ -f "$CAMERA_CONFIG" ]; then
     rm -- "$CAMERA_CONFIG"
@@ -50,7 +65,7 @@ if [ -f "$LIGHTBAR_CONFIG" ]; then
     echo "camera-lightbar.cfg removed."
 fi
 
-remove_include "$MOONRAKER_CONFIG" \
+remove_moonraker_include "$MOONRAKER_CONFIG" \
     '^[[:space:]]*\[include[[:space:]]+update_camera_control\.cfg\][[:space:]]*$'
 
 if [ -f "$UPDATE_CONFIG" ]; then

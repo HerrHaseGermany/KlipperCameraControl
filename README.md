@@ -72,6 +72,8 @@ add the optional config to `printer.cfg`:
 [include camera-lightbar.cfg]
 ```
 
+Place this include in the normal editable configuration section before Klipper's `SAVE_CONFIG` block, preferably next to `[include camera.cfg]`. Never add or edit configuration inside the auto-generated `SAVE_CONFIG` block.
+
 The lightbar state is checked every 0.5 seconds after an initial 2-second delay. Exposure is set to `250` when the lightbar is on and `1000` when it is off.
 
 ## Moonraker Update Manager
