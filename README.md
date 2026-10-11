@@ -1,5 +1,7 @@
 # KlipperCameraControl
 
+Version: `1.0.1`
+
 KlipperCameraControl provides camera exposure control directly from Klipper G-code. It finds a stable USB V4L2 camera device automatically and sets its absolute exposure through `v4l2-ctl`.
 
 ## Features
@@ -8,7 +10,7 @@ KlipperCameraControl provides camera exposure control directly from Klipper G-co
 - Validate exposure values from 3 through 2047
 - Detect cameras through stable `/dev/v4l/by-id/usb-*-video-index0` paths
 - Optional automatic exposure switching based on a Klipper lightbar output
-- Moonraker Update Manager integration
+- Optional manual Moonraker Update Manager integration
 - Repeatable install and uninstall scripts
 
 ## Requirements
@@ -36,7 +38,7 @@ cd KlipperCameraControl
 ./install.sh
 ```
 
-The installer verifies the prerequisites, installs `camera.cfg` in the Klipper config directory, adds exactly one `[include camera.cfg]` to `printer.cfg`, and configures Moonraker Update Manager. Restart Klipper and Moonraker afterward.
+The installer verifies the prerequisites, installs `camera.cfg` in the Klipper config directory, and adds exactly one `[include camera.cfg]` to `printer.cfg`. Restart Klipper afterward. To enable updates through Moonraker, follow the optional setup below.
 
 ## Manual exposure control
 
@@ -78,13 +80,25 @@ The lightbar state is checked every 0.5 seconds after an initial 2-second delay.
 
 ## Moonraker Update Manager
 
-Installation creates `update_camera_control.cfg` and includes it from `moonraker.conf` as:
+Add this entry to `moonraker.conf` or your existing included Update Manager configuration file:
 
 ```ini
 [update_manager KlipperCameraControl]
+type: git_repo
+channel: dev
+path: ~/KlipperCameraControl
+origin: https://github.com/HerrHaseGermany/KlipperCameraControl.git
+primary_branch: main
+is_system_service: False
 ```
 
-The updater tracks the repository's `main` branch and reruns `install.sh` after updates.
+Adjust `path` to your repository location. If you use a separate configuration file, ensure it is included from `moonraker.conf`, for example with `[include my_update_manager.conf]`. Define the entry only once, then restart Moonraker.
+
+The installer and uninstaller leave Moonraker configuration untouched. Files such as `update_camera_control.cfg` created by older versions are preserved; when moving the entry to your own file, remove the old entry and any obsolete include manually.
+
+Moonraker updates the repository but does not run `install.sh`. After updates that change the camera config templates, run `./install.sh` from the repository directory and restart Klipper to apply them. The installer backs up existing camera configs before replacing them; reapply your custom settings as needed.
+
+See the [Moonraker Update Manager configuration reference](https://moonraker.readthedocs.io/en/stable/configuration/#git-repo-configuration) for further options.
 
 ## Uninstallation
 
@@ -94,7 +108,7 @@ From the repository directory, run:
 ./uninstall.sh
 ```
 
-The uninstaller removes the installed camera configs, their includes, and the project-owned Moonraker Update Manager config. It preserves this repository, backup files, and unrelated Klipper configuration. Restart Klipper and Moonraker afterward.
+The uninstaller removes the installed camera configs and their Klipper includes. It preserves this repository, backup files, unrelated Klipper configuration, and all Moonraker configuration. Restart Klipper afterward. If you configured an Update Manager entry, remove it manually from your chosen configuration file and restart Moonraker.
 
 ## Tested hardware and software
 

@@ -22,8 +22,6 @@ PRINTER_CONFIG_HELPER="$PROJECT_DIR/printer_config.sh"
 CAMERA_CONFIG="$CONFIG_DIR/camera.cfg"
 LIGHTBAR_CONFIG="$CONFIG_DIR/camera-lightbar.cfg"
 PRINTER_CONFIG="$CONFIG_DIR/printer.cfg"
-MOONRAKER_CONFIG="$CONFIG_DIR/moonraker.conf"
-UPDATE_CONFIG="$CONFIG_DIR/update_camera_control.cfg"
 GCODE_SHELL="$KLIPPER_DIR/klippy/extras/gcode_shell_command.py"
 
 echo "User:       $CAMERA_USER"
@@ -66,12 +64,6 @@ done
 if [ ! -f "$PRINTER_CONFIG" ]; then
     echo "ERROR: printer.cfg was not found at:"
     echo "$PRINTER_CONFIG"
-    exit 1
-fi
-
-if [ ! -f "$MOONRAKER_CONFIG" ]; then
-    echo "ERROR: moonraker.conf was not found at:"
-    echo "$MOONRAKER_CONFIG"
     exit 1
 fi
 
@@ -162,31 +154,6 @@ chmod --reference="$PRINTER_CONFIG" "$TEMP_CONFIG"
 mv -- "$TEMP_CONFIG" "$PRINTER_CONFIG"
 echo "Ensured exactly one [include camera.cfg] before SAVE_CONFIG."
 
-# Configure Moonraker Update Manager in a project-owned include file.
-cat > "$UPDATE_CONFIG" <<EOF_UPDATE
-[update_manager KlipperCameraControl]
-type: git_repo
-path: $PROJECT_DIR
-origin: https://github.com/HerrHaseGermany/KlipperCameraControl.git
-primary_branch: main
-install_script: install.sh
-is_system_service: False
-EOF_UPDATE
-
-# Normalize the project-owned Moonraker include to exactly one occurrence.
-TEMP_CONFIG="$(mktemp "$CONFIG_DIR/.moonraker.conf.XXXXXX")"
-awk '
-    $0 ~ /^[[:space:]]*\[include[[:space:]]+update_camera_control\.cfg\][[:space:]]*$/ { next }
-    { lines[++count] = $0 }
-    END {
-        print "[include update_camera_control.cfg]"
-        for (i = 1; i <= count; i++) print lines[i]
-    }
-' "$MOONRAKER_CONFIG" > "$TEMP_CONFIG"
-chmod --reference="$MOONRAKER_CONFIG" "$TEMP_CONFIG"
-mv -- "$TEMP_CONFIG" "$MOONRAKER_CONFIG"
-echo "Moonraker Update Manager configured."
-
 echo
 echo "=========================================="
 echo " KlipperCameraControl installation complete"
@@ -204,7 +171,8 @@ echo "  add [include camera-lightbar.cfg] to the editable section of"
 echo "  printer.cfg, before SAVE_CONFIG and preferably next to"
 echo "  [include camera.cfg]."
 echo
-echo "Restart Klipper and Moonraker to apply the changes."
+echo "Optional Moonraker Update Manager setup is documented in README.md."
+echo "Restart Klipper to apply the changes."
 echo
 
 exit 0
