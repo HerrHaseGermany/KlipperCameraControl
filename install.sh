@@ -18,6 +18,9 @@ CONFIG_DIR="$USER_HOME/printer_data/config"
 CAMERA_TEMPLATE="$PROJECT_DIR/camera.cfg"
 LIGHTBAR_TEMPLATE="$PROJECT_DIR/camera-lightbar.cfg"
 EXPOSURE_SCRIPT="$PROJECT_DIR/set_camera_exposure.sh"
+FOCUS_SCRIPT="$PROJECT_DIR/set_camera_focus.sh"
+CAMERA_COMMON="$PROJECT_DIR/camera_common.sh"
+CAMERA_CONFIG_HELPER="$PROJECT_DIR/camera_config.py"
 PRINTER_CONFIG_HELPER="$PROJECT_DIR/printer_config.sh"
 CAMERA_CONFIG="$CONFIG_DIR/camera.cfg"
 LIGHTBAR_CONFIG="$CONFIG_DIR/camera-lightbar.cfg"
@@ -53,6 +56,9 @@ for REQUIRED_FILE in \
     "$CAMERA_TEMPLATE" \
     "$LIGHTBAR_TEMPLATE" \
     "$EXPOSURE_SCRIPT" \
+    "$FOCUS_SCRIPT" \
+    "$CAMERA_COMMON" \
+    "$CAMERA_CONFIG_HELPER" \
     "$PRINTER_CONFIG_HELPER"; do
     if [ ! -f "$REQUIRED_FILE" ]; then
         echo "ERROR: Required repository file was not found:"
@@ -67,7 +73,7 @@ if [ ! -f "$PRINTER_CONFIG" ]; then
     exit 1
 fi
 
-if [ ! -x /usr/bin/v4l2-ctl ]; then
+if [ ! -x "${KCC_V4L2_CTL:-/usr/bin/v4l2-ctl}" ]; then
     echo "ERROR: /usr/bin/v4l2-ctl was not found or is not executable."
     echo
     echo "Install v4l-utils and run the installer again:"
@@ -95,24 +101,15 @@ fi
 echo "gcode_shell_command.py found."
 
 # Camera presence is informative; installation remains possible without one.
-CAMERA_FOUND=""
-for DEVICE in /dev/v4l/by-id/usb-*-video-index0; do
-    if [ -e "$DEVICE" ]; then
-        CAMERA_FOUND="$DEVICE"
-        break
-    fi
-done
-
-if [ -n "$CAMERA_FOUND" ]; then
+. "$CAMERA_COMMON"
+if kcc_detect_camera; then
     echo "Camera detected:"
-    echo "  $CAMERA_FOUND"
+    echo "  $CAMERA"
 else
     echo "WARNING: No USB V4L2 camera was detected."
     echo "Installation will continue."
 fi
 echo
-
-chmod +x "$EXPOSURE_SCRIPT"
 
 backup_config() {
     local source_file="$1"
@@ -131,27 +128,38 @@ backup_config() {
     echo "$backup_file"
 }
 
-backup_config "$CAMERA_CONFIG"
-backup_config "$LIGHTBAR_CONFIG"
-
-# Install the generic camera config with the absolute repository path.
-PROJECT_DIR_ESCAPED="$(printf '%s\n' "$PROJECT_DIR" | sed 's/[&|\\]/\\&/g')"
-sed "s|__KLIPPERCAMERACONTROL_PATH__|$PROJECT_DIR_ESCAPED|g" \
-    "$CAMERA_TEMPLATE" > "$CAMERA_CONFIG"
-cp -- "$LIGHTBAR_TEMPLATE" "$LIGHTBAR_CONFIG"
-
-echo "camera.cfg installed:"
-echo "$CAMERA_CONFIG"
-echo "Optional camera-lightbar.cfg installed:"
-echo "$LIGHTBAR_CONFIG"
-
-# Keep exactly one camera include in the editable section of printer.cfg.
-# The helper also migrates exact legacy camera includes left below SAVE_CONFIG.
+# Stage and validate all configs before changing the active installation.
+STAGING_DIR="$(mktemp -d "$CONFIG_DIR/.kcc.XXXXXX")"
+trap 'rm -rf -- "$STAGING_DIR"' EXIT
+python3 "$CAMERA_CONFIG_HELPER" merge "$CAMERA_TEMPLATE" "$CAMERA_CONFIG" \
+    "$PROJECT_DIR" "$STAGING_DIR/camera.cfg"
+python3 "$CAMERA_CONFIG_HELPER" merge "$LIGHTBAR_TEMPLATE" "$LIGHTBAR_CONFIG" \
+    "$PROJECT_DIR" "$STAGING_DIR/camera-lightbar.cfg"
 . "$PRINTER_CONFIG_HELPER"
-TEMP_CONFIG="$(mktemp "$CONFIG_DIR/.printer.cfg.XXXXXX")"
-kcc_transform_printer_config install "$PRINTER_CONFIG" "$TEMP_CONFIG"
-chmod --reference="$PRINTER_CONFIG" "$TEMP_CONFIG"
-mv -- "$TEMP_CONFIG" "$PRINTER_CONFIG"
+kcc_transform_printer_config install "$PRINTER_CONFIG" "$STAGING_DIR/printer.cfg"
+python3 "$CAMERA_CONFIG_HELPER" check "$PRINTER_CONFIG" "$STAGING_DIR/printer.cfg" \
+    "$STAGING_DIR/camera.cfg" "$STAGING_DIR/camera-lightbar.cfg"
+
+chmod +x "$EXPOSURE_SCRIPT" "$FOCUS_SCRIPT"
+for CONFIG_NAME in camera.cfg camera-lightbar.cfg printer.cfg; do
+    DESTINATION="$CONFIG_DIR/$CONFIG_NAME"
+    SOURCE="$STAGING_DIR/$CONFIG_NAME"
+    if cmp -s "$SOURCE" "$DESTINATION"; then
+        echo "$CONFIG_NAME unchanged."
+        continue
+    fi
+    backup_config "$DESTINATION"
+    python3 - "$SOURCE" "$DESTINATION" <<'PYTHON'
+import os
+import shutil
+import sys
+source, destination = sys.argv[1:]
+if os.path.exists(destination):
+    shutil.copymode(destination, source)
+os.replace(source, destination)
+PYTHON
+    echo "$CONFIG_NAME installed: $DESTINATION"
+done
 echo "Ensured exactly one [include camera.cfg] before SAVE_CONFIG."
 
 echo
