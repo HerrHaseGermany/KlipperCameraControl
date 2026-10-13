@@ -54,7 +54,7 @@ esac
         return result
 
     def test_focus_values_and_order(self):
-        for value in ['0', '10', '40', '100', '250']:
+        for value in ['0', '10', '40', '45', '100', '250']:
             self.log.write_text('')
             self.run_script('set_camera_focus.sh', value)
             calls = self.log.read_text().splitlines()
@@ -63,7 +63,7 @@ esac
             self.assertTrue(calls[2].endswith('--set-ctrl=focus_absolute=' + value))
             self.assertTrue(all(str(self.c922) in call for call in calls))
         self.run_script('set_camera_focus.sh')
-        self.assertTrue(self.log.read_text().rstrip().endswith('focus_absolute=40'))
+        self.assertTrue(self.log.read_text().rstrip().endswith('focus_absolute=45'))
 
     def test_invalid_focus_never_contacts_device(self):
         for value in ['', '-5', '251', '255', '1', '08', '040', '40.0', '40abc',
@@ -182,16 +182,34 @@ esac
         self.assertFalse((folder / 'camera.cfg').exists())
         self.assertFalse(list(folder.glob('*.backup-*')))
 
+    def test_lightbar_focus_customizations_survive_repeated_install(self):
+        folder = self.install_fixture()
+        lightbar = folder / 'camera-lightbar.cfg'
+        custom = (ROOT / 'camera-lightbar.cfg').read_text().replace(
+            '            CAM_FOCUS VALUE=45', '\t\t\tCAM_FOCUS VALUE=45')
+        lightbar.write_text(custom)
+        for _ in range(2):
+            self.run_script('install.sh')
+            self.assertEqual(lightbar.read_text(), custom)
+        self.assertFalse(list(folder.glob('camera-lightbar.cfg.backup-*')))
+
+        # A user's focus value must also take precedence over the template.
+        custom = custom.replace('CAM_FOCUS VALUE=45', 'CAM_FOCUS VALUE=100')
+        lightbar.write_text(custom)
+        self.run_script('install.sh')
+        self.assertEqual(lightbar.read_text(), custom)
+        self.assertFalse(list(folder.glob('camera-lightbar.cfg.backup-*')))
+
     def test_fresh_install_and_custom_focus_preservation(self):
         folder = self.install_fixture()
         self.run_script('install.sh')
         camera = folder / 'camera.cfg'
         fresh = config.merge((ROOT / 'camera.cfg').read_text(), None, ROOT)
         self.assertEqual(camera.read_text(), fresh)
-        camera.write_text(camera.read_text().replace('default(40)', 'default(100)'))
+        camera.write_text(camera.read_text().replace('default(45)', 'default(100)'))
         self.run_script('install.sh')
         self.assertIn('default(100)', camera.read_text())
-        self.assertNotIn('default(40)', camera.read_text())
+        self.assertNotIn('default(45)', camera.read_text())
 
     def test_merge_quotes_paths_and_rejects_duplicate_sections(self):
         project = Path('/home/biqu/camera control')

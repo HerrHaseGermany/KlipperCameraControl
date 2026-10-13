@@ -13,7 +13,7 @@ if [ "${1:-}" = "--autofocus" ]; then
     echo "CameraControl: $AUTOFOCUS_CONTROL=$2"
 else
     [ "$#" -le 1 ] || kcc_error "Usage: set_camera_focus.sh [VALUE]"
-    FOCUS="${1-40}"
+    FOCUS="${1-45}"
     kcc_validate_integer "$FOCUS" 0 250 5 Focus
     kcc_camera_init
     kcc_focus_control

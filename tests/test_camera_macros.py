@@ -29,10 +29,10 @@ class MacroTests(unittest.TestCase):
         return self.environment.from_string(body).render(params=params, action_raise_error=fail)
 
     def test_valid_commands_and_defaults(self):
-        for value in ['0', '10', '40', '100', '250']:
+        for value in ['0', '10', '40', '45', '100', '250']:
             self.assertIn('CMD=camera_focus PARAMS=' + value,
                           self.render('CAM_FOCUS', {'VALUE': value}))
-        self.assertIn('PARAMS=40', self.render('CAM_FOCUS', {}))
+        self.assertIn('PARAMS=45', self.render('CAM_FOCUS', {}))
         self.assertIn('PARAMS=100', self.render('CAM_EXPOSURE', {}))
         for value in ['3', '200', '1000', '2047']:
             self.assertIn('CMD=camera_exposure PARAMS=' + value,

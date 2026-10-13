@@ -7,7 +7,7 @@ KlipperCameraControl controls camera exposure, manual focus and autofocus direct
 ## Features
 
 - Set camera exposure with a Klipper G-code macro
-- Set manual focus from 0 through 250 in steps of 5 (default: 40)
+- Set manual focus from 0 through 250 in steps of 5 (default: 45)
 - Enable or disable autofocus without setting a replacement focus value
 - Validate exposure values from 3 through 2047
 - Detect cameras through stable `/dev/v4l/by-id/usb-*-video-index0` paths
@@ -74,7 +74,7 @@ The Logitech C922 uses focus values from `0` to `250`, in steps of `5`:
 
 ```text
 CAM_FOCUS VALUE=10
-CAM_FOCUS VALUE=40
+CAM_FOCUS VALUE=45
 CAM_FOCUS VALUE=100
 CAM_FOCUS VALUE=250
 CAM_FOCUS
@@ -82,9 +82,11 @@ CAM_AUTOFOCUS ON=1
 CAM_AUTOFOCUS ON=0
 ```
 
-`CAM_FOCUS` without a value defaults to `40`. Each manual focus command disables autofocus first, then sets `focus_absolute`. Values such as `41`, `40.5`, `040`, and `abc` produce an error in Mainsail before a shell command runs.
+`CAM_FOCUS` without a value defaults to `45`. Each manual focus command disables autofocus first, then sets `focus_absolute`. Values such as `41`, `40.5`, `040`, and `abc` produce an error in Mainsail before a shell command runs.
 
 `CAM_AUTOFOCUS` requires `ON=0` or `ON=1`. Disabling autofocus only toggles the automatic mode, allowing the current lens position to remain where the driver supports it; it does not force the default focus value. Actual lens retention depends on the camera and driver. `CAMERA_FOCUS` is not a provided command; use `CAM_FOCUS`.
+
+The installer preserves existing macro defaults. To adopt `45` on an existing installation, change `default(40)` to `default(45)` in the `CAM_FOCUS` macro in `~/printer_data/config/camera.cfg`, then restart Klipper.
 
 ## Automatic camera detection
 
@@ -117,10 +119,12 @@ port: 8080
 device: /dev/v4l/by-id/usb-046d_C922_Pro_Stream_Webcam_E6599CCF-video-index0
 resolution: 1920x1080
 max_fps: 30
-v4l2ctl: exposure_auto=1,exposure_auto_priority=0,exposure_absolute=200,focus_auto=0,focus_absolute=40,power_line_frequency=1
+v4l2ctl: exposure_auto=1,exposure_auto_priority=0,exposure_absolute=200,focus_auto=0,focus_absolute=45,power_line_frequency=1
 ```
 
 Use the control names shown by your own `v4l2-ctl --list-ctrls-menus`; names can differ between utility/driver versions. `power_line_frequency=1` selects 50 Hz on this camera. Focus changes through these macros take effect at runtime without restarting Crowsnest. They are not saved to `crowsnest.conf` and may be overwritten at service startup, camera reconnection, or by other tools. Crowsnest's V4 code also contains a focus workaround which can reapply a configured focus value. See its [V4L2 control implementation](https://github.com/mainsail-crew/crowsnest/blob/master/libs/v4l2_control.sh) and [camera configuration reference](https://crowsnest.mainsail.xyz/configuration/cam-section).
+
+For an existing `[cam 1]` section, set `focus_absolute=45` in its `v4l2ctl` line in `~/printer_data/config/crowsnest.conf`, keeping the other controls. Restart Crowsnest to apply the startup setting.
 
 After deliberately restarting Crowsnest or rebooting the CB2, verify the actual values:
 
@@ -168,7 +172,11 @@ add the optional config to `printer.cfg`:
 
 Place this include in the normal editable configuration section before Klipper's `SAVE_CONFIG` block, preferably next to `[include camera.cfg]`. Never add or edit configuration inside the auto-generated `SAVE_CONFIG` block.
 
-The lightbar state is checked every 0.5 seconds after an initial 2-second delay. Exposure is set to `250` when the lightbar is on and `1000` when it is off.
+The lightbar state is checked every 0.5 seconds after an initial 2-second delay. On each state change, exposure is set to `250` when the lightbar is on and `1000` when it is off; manual focus is set to `45` in both states.
+
+Customize the installed `~/printer_data/config/camera-lightbar.cfg`. The current installer preserves existing lightbar macro bodies, including added `CAM_FOCUS` commands and custom values. Existing installations do not automatically receive the new focus commands; add `CAM_FOCUS VALUE=45` directly after each `CAM_EXPOSURE` command if desired. Keep user settings in the installed config, since the repository's `camera-lightbar.cfg` is an updateable template.
+
+Older installers replaced the installed lightbar config. If custom settings were lost, check `camera-lightbar.cfg.backup-*` in the config directory and restore the desired commands before running the current installer.
 
 ## Moonraker Update Manager
 
